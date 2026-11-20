@@ -1,0 +1,22 @@
+name: Run DevOps Quality Gate
+
+# Trigger on every push and pull request in this repository
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # Calls the central reusable quality gate from your public repo
+  quality-gate:
+    name: "Enforce Security & Performance SLA"
+    uses: <YOUR_GITHUB_USERNAME>/ci-security-load-quality-gate/.github/workflows/quality-gate.yml@main
+    with:
+      port: "3000"              # Your container application port (e.g., 3000 for Node.js, 8080 for Spring)
+      health_path: "/health"    # Probe path to confirm container readiness
+      load_test_path: "/api"    # API endpoint to benchmark under load
+      max_latency_ms: 300       # SLA limit: PR fails if p97.5 latency > 300ms
+      connections: 30           # 30 concurrent users
+      duration: 10              # 10 seconds benchmark
+      deploy_to_ecs: false      # Keeps it 100% FREE (₹0) — AWS is NOT touched

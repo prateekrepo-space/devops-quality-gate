@@ -1,0 +1,60 @@
+name: CI/CD Quality Gate Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  id-token: write  # Required for GitHub OIDC authentication to AWS
+
+jobs:
+  # ============================================================================
+  # STAGE 1: Code Quality & Unit Testing
+  # ============================================================================
+  unit-tests:
+    name: "Stage 1: Code & Unit Tests"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/requirements.txt
+
+      - name: Run Pytest Suite
+        run: |
+          pytest -v tests/
+
+  # ============================================================================
+  # STAGES 2-5: Universal Quality Gate Engine (Local Reusable Call)
+  # ============================================================================
+  quality-gate:
+    name: "Stages 2-5: Reusable Quality Gate Engine"
+    needs: unit-tests
+    uses: ./.github/workflows/quality-gate.yml
+    with:
+      port: "8000"
+      health_path: "/health"
+      load_test_path: "/items"
+      max_latency_ms: 300
+      connections: 30
+      duration: 10
+      deploy_to_ecs: true
+      aws_region: "us-east-1"
+      ecr_repository: "ci-security-gate-api"
+      ecs_cluster: "ci-security-gate-cluster"
+      ecs_service: "ci-security-gate-service"
+      container_name: "demo-api"
+      task_definition_path: "task-definition.json"
+    secrets: inherit

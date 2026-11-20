@@ -1,0 +1,30 @@
+name: Run Quality Gate & Deploy to AWS ECS
+
+# Trigger on push and pull requests; deploys only when merged into main
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  id-token: write  # Required for GitHub OIDC authentication
+
+jobs:
+  quality-gate-and-deploy:
+    name: "Enforce Quality Gate & Deploy to ECS"
+    uses: <YOUR_GITHUB_USERNAME>/ci-security-load-quality-gate/.github/workflows/quality-gate.yml@main
+    with:
+      port: "8000"
+      health_path: "/health"
+      load_test_path: "/items"
+      max_latency_ms: 300
+      deploy_to_ecs: true       # Enables deployment to AWS ECS Fargate upon merge to main
+      aws_region: "us-east-1"
+      ecr_repository: "my-showcase-api"
+      ecs_cluster: "my-showcase-cluster"
+      ecs_service: "my-showcase-service"
+      container_name: "my-showcase-container"
+      task_definition_path: "task-definition.json"
+    secrets: inherit            # Securely passes AWS_ROLE_ARN configured in this repo's secrets

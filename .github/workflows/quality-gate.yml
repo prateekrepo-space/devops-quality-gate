@@ -1,0 +1,321 @@
+name: Universal Quality Gate Engine
+
+# ==============================================================================
+# REUSABLE WORKFLOW (Platform Engineering Pattern)
+#
+# Can be called by ANY containerized repository across your GitHub account:
+#   uses: <YOUR_USERNAME>/<GATE_REPO>/.github/workflows/quality-gate.yml@main
+#
+# SDLC Quality Gates:
+#   1. Secret Scanning (Gitleaks - full commit history)
+#   2. Vulnerability Scanning (Trivy - blocks CRITICAL CVEs)
+#   3. Load-Testing Gate (Autocannon - blocks p97.5 latency regressions)
+#   4. AWS ECS Fargate Continuous Deployment (Optional - deploy_to_ecs: true)
+# ==============================================================================
+
+on:
+  workflow_call:
+    inputs:
+      port:
+        description: "Application container port (e.g. 8000, 3000, 8080)"
+        required: false
+        type: string
+        default: "8000"
+      health_path:
+        description: "Readiness probe endpoint path (e.g. /health, /api/health)"
+        required: false
+        type: string
+        default: "/health"
+      load_test_path:
+        description: "API endpoint path to benchmark under load (e.g. /items, /api)"
+        required: false
+        type: string
+        default: "/items"
+      max_latency_ms:
+        description: "Maximum allowable p97.5 latency in milliseconds"
+        required: false
+        type: number
+        default: 300
+      connections:
+        description: "Number of concurrent Autocannon connections"
+        required: false
+        type: number
+        default: 30
+      duration:
+        description: "Duration of Autocannon benchmark in seconds"
+        required: false
+        type: number
+        default: 10
+      deploy_to_ecs:
+        description: "Whether to deploy to AWS ECS Fargate upon merge to main"
+        required: false
+        type: boolean
+        default: false
+      aws_region:
+        description: "AWS Region for ECR and ECS deployment"
+        required: false
+        type: string
+        default: "us-east-1"
+      ecr_repository:
+        description: "Amazon ECR Repository name"
+        required: false
+        type: string
+        default: "ci-security-gate-api"
+      ecs_cluster:
+        description: "Amazon ECS Cluster name"
+        required: false
+        type: string
+        default: "ci-security-gate-cluster"
+      ecs_service:
+        description: "Amazon ECS Service name"
+        required: false
+        type: string
+        default: "ci-security-gate-service"
+      container_name:
+        description: "Container name defined in ECS task definition"
+        required: false
+        type: string
+        default: "demo-api"
+      task_definition_path:
+        description: "Path to task-definition.json"
+        required: false
+        type: string
+        default: "task-definition.json"
+    secrets:
+      AWS_ROLE_ARN:
+        description: "IAM Role ARN for AWS OIDC authentication (only needed if deploy_to_ecs: true)"
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      port:
+        description: "Application container port"
+        required: false
+        type: string
+        default: "8000"
+      health_path:
+        description: "Readiness probe path"
+        required: false
+        type: string
+        default: "/health"
+      load_test_path:
+        description: "Endpoint path to benchmark"
+        required: false
+        type: string
+        default: "/items"
+      max_latency_ms:
+        description: "Maximum allowable p97.5 latency in ms"
+        required: false
+        type: number
+        default: 300
+      deploy_to_ecs:
+        description: "Deploy to AWS ECS Fargate"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write  # Required for GitHub OIDC authentication to AWS
+
+jobs:
+  # ============================================================================
+  # GATE 1: Shift-Left Secret Scanning (Gitleaks)
+  # ============================================================================
+  secret-scan-gate:
+    name: "Gate 1: Secret Scan (Gitleaks)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Caller Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks Secret Scanner
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================================
+  # GATE 2: Container Build & Vulnerability Security Gate (Trivy)
+  # ============================================================================
+  vulnerability-scan-gate:
+    name: "Gate 2: Container Security (Trivy)"
+    needs: secret-scan-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Caller Repository
+        uses: actions/checkout@v4
+
+      - name: Build Local Container Image
+        run: |
+          docker build -t target-app:${{ github.sha }} .
+
+      - name: Run Trivy Vulnerability Scan (Fail on CRITICAL CVEs)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "target-app:${{ github.sha }}"
+          format: "table"
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL"
+
+  # ============================================================================
+  # GATE 3: Load-Testing Performance Quality Gate (Autocannon)
+  # ============================================================================
+  load-test-quality-gate:
+    name: "Gate 3: Load-Testing SLA Gate (Autocannon)"
+    needs: vulnerability-scan-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Caller Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js for Autocannon
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Python for SLA Evaluation
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build Ephemeral Container Image
+        run: |
+          docker build -t target-app:loadtest .
+
+      - name: Start Ephemeral Application Container
+        run: |
+          docker run -d --name target-app-runtime \
+            -p ${{ inputs.port }}:${{ inputs.port }} \
+            target-app:loadtest
+
+      - name: Wait for API Health Readiness Probe
+        run: |
+          echo "Waiting for health probe at http://localhost:${{ inputs.port }}${{ inputs.health_path }}..."
+          for i in {1..30}; do
+            if curl -s -f http://localhost:${{ inputs.port }}${{ inputs.health_path }} > /dev/null; then
+              echo "Container is healthy and ready for load benchmark!"
+              exit 0
+            fi
+            echo -n "."
+            sleep 1
+          done
+          echo "Container failed to pass readiness probe within 30s"
+          docker logs target-app-runtime
+          exit 1
+
+      - name: Run Autocannon Load Benchmark
+        run: |
+          echo "Running load test: ${{ inputs.connections }} connections, ${{ inputs.duration }}s against http://localhost:${{ inputs.port }}${{ inputs.load_test_path }}..."
+          npx --yes autocannon --json \
+            -c ${{ inputs.connections }} \
+            -d ${{ inputs.duration }} \
+            http://localhost:${{ inputs.port }}${{ inputs.load_test_path }} > autocannon.json
+          cat autocannon.json
+
+      - name: Enforce Performance SLA Thresholds
+        run: |
+          python - << 'EOF'
+          import json
+          import sys
+
+          with open("autocannon.json", "r") as f:
+              data = json.load(f)
+
+          max_latency = float("${{ inputs.max_latency_ms }}")
+          errors = data.get("errors", 0)
+          non2xx = data.get("non2xx", 0)
+          p97_5 = data.get("latency", {}).get("p97_5", 0)
+          total_requests = data.get("requests", {}).get("total", 0)
+          throughput_avg = data.get("throughput", {}).get("average", 0)
+
+          print("\n" + "="*50)
+          print("AUTOCANNON QUALITY GATE RESULTS")
+          print("="*50)
+          print(f"Total Requests:       {total_requests}")
+          print(f"Average Throughput:   {throughput_avg / 1024 / 1024:.2f} MB/s")
+          print(f"Total Errors:         {errors} (Max allowed: 0)")
+          print(f"Non-2xx Responses:    {non2xx} (Max allowed: 0)")
+          print(f"p97.5 Latency:        {p97_5} ms (Max SLA allowed: {max_latency} ms)")
+          print("="*50)
+
+          failed = False
+          if errors > 0:
+              print(f"GATE FAILED: {errors} request/connection errors detected.")
+              failed = True
+          if non2xx > 0:
+              print(f"GATE FAILED: {non2xx} non-2xx status codes returned.")
+              failed = True
+          if p97_5 > max_latency:
+              print(f"GATE FAILED: p97.5 latency ({p97_5} ms) breached SLA threshold ({max_latency} ms).")
+              failed = True
+
+          if failed:
+              print("\n🚨 Quality Gate REJECTED: Performance SLA breach.\n")
+              sys.exit(1)
+
+          print("\n Quality Gate PASSED: App satisfies throughput & latency SLAs.\n")
+          EOF
+
+      - name: Stop and Clean Up Ephemeral Container
+        if: always()
+        run: |
+          echo "Cleaning up ephemeral performance container..."
+          docker stop target-app-runtime || true
+          docker rm target-app-runtime || true
+
+  # ============================================================================
+  # GATE 4: Optional Continuous Deployment to AWS ECS Fargate (main branch only)
+  # ============================================================================
+  deploy-to-ecs:
+    name: "Gate 4: CD to AWS ECS Fargate"
+    needs: load-test-quality-gate
+    if: inputs.deploy_to_ecs == true && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Caller Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials via GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+          audience: sts.amazonaws.com
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, Tag, and Push Docker Image to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="$ECR_REGISTRY/${{ inputs.ecr_repository }}:$IMAGE_TAG"
+          IMAGE_LATEST="$ECR_REGISTRY/${{ inputs.ecr_repository }}:latest"
+          echo "Building image $IMAGE_URI..."
+          docker build -t "$IMAGE_URI" -t "$IMAGE_LATEST" .
+          docker push "$IMAGE_URI"
+          docker push "$IMAGE_LATEST"
+          echo "image=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Render Amazon ECS Task Definition
+        id: render-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ inputs.task_definition_path }}
+          container-name: ${{ inputs.container_name }}
+          image: ${{ steps.build-image.outputs.image }}
+
+      - name: Deploy Amazon ECS Task Definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
+          service: ${{ inputs.ecs_service }}
+          cluster: ${{ inputs.ecs_cluster }}
+          wait-for-service-stability: true
