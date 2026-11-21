@@ -16,6 +16,7 @@ CATALOG_ITEMS = [
     {"id": 3, "name": "Autocannon Quality Gate", "category": "Performance", "status": "active"},
     {"id": 4, "name": "Fargate Task Controller", "category": "Compute", "status": "active"},
     {"id": 5, "name": "Trivy Vulnerability Filter", "category": "Security", "status": "active"},
+    {"id": 6, "name": "Grafana Dashboard", "category": "Observability", "status": "active"},
 ]
 
 
