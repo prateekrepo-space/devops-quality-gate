@@ -1,58 +1,76 @@
-# Free CI Security & Load-Testing Quality Gate for Any Repo
+# DevOps Quality Gate
 
-> **100% Free (₹0 / $0 Forever) DevSecOps & Platform Engineering Quality Gate for GitHub Actions. Blocks hardcoded secrets (Gitleaks), critical container vulnerabilities (Trivy), and latency regressions (Autocannon p97.5 SLA) before bad code can merge—with zero cloud infrastructure or AWS account required.**
+> **An automated, zero-cost (₹0) DevSecOps quality gate for GitHub Actions. Blocks hardcoded secrets (Gitleaks), critical container vulnerabilities (Trivy), and latency regressions (Autocannon p97.5 SLA) before bad code can merge into production.**
 
-[![Platform Engineering Reusable Workflow](https://img.shields.io/badge/Platform%20Engineering-GitHub%20workflow__call-2088FF?logo=github-actions&logoColor=white)](#how-to-wire-this-quality-gate-to-any-repo-in-30-seconds)
-[![Security Scan](https://img.shields.io/badge/Security-Gitleaks%20%7C%20Trivy-blueviolet?logo=shield)](https://github.com/aquasecurity/trivy)
-[![Load Testing](https://img.shields.io/badge/Performance%20Gate-Autocannon%20p97.5-orange)](https://github.com/mcollina/autocannon)
-[![Cost](https://img.shields.io/badge/Total%20Cost-%E2%82%B90%20%2F%20%240-success)](#why-it-costs-0-forever)
-
----
-
-## What Is This?
-
-This project is an **automated quality bouncer** that runs on GitHub Actions. It acts as a central **Reusable Workflow (`workflow_call`)** that any of your repositories (Node.js, Python, Go, Java, Rust) can plug into with **just 10 lines of YAML**.
-
-Every time a developer opens a Pull Request in any connected repo, GitHub spins up an ephemeral runner and tests three critical gates before code can merge:
-
-1. **Secret Scanning ([Gitleaks](https://github.com/gitleaks/gitleaks-action)):** Scans the entire git history to catch leaked API keys, tokens, or passwords.
-2. **Container Security ([Trivy](https://trivy.dev/)):** Builds your Docker image and fails if it finds `CRITICAL` operating system or library CVEs.
-3. **Speed & SLA Gate ([Autocannon](https://github.com/mcollina/autocannon)):** Starts your container on the runner, verifies `/health`, and hammers your API route with 30 concurrent users for 10 seconds. If any request fails or `p97.5 latency > 300ms`, the PR turns red and blocks the merge.
+[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Reusable%20Workflow-2088FF?logo=github-actions&logoColor=white)](#how-to-use-this-in-your-own-project)
+[![Gitleaks](https://img.shields.io/badge/Secrets-Gitleaks-blueviolet?logo=shield)](https://github.com/gitleaks/gitleaks-action)
+[![Trivy](https://img.shields.io/badge/Security-Trivy%20Scanner-blue)](https://github.com/aquasecurity/trivy)
+[![Autocannon](https://img.shields.io/badge/Performance-Autocannon-orange)](https://github.com/mcollina/autocannon)
+[![Cost](https://img.shields.io/badge/Cost-%E2%82%B90%20%2F%20%240%20Free-success)](#why-it-is-100-free)
 
 ---
 
-## Architecture: Central Engine & Consumer Repositories
+## Introduction & Scope
+
+Standard continuous integration (CI) pipelines only test if code runs functionally (e.g., returning HTTP 200). They silently allow critical security vulnerabilities, leaked credentials, and severe speed slowdowns to reach production.
+
+**DevOps Quality Gate** acts as an automated quality bouncer for your repositories. It runs in GitHub Actions as a centralized **Reusable Workflow (`workflow_call`)** that inspects your application across three automated gates before allowing a Pull Request to merge.
+
+* **Language-Agnostic:** Works with any language or framework (Node.js, Python, Go, Java, Rust, PHP) that packages into a Docker container.
+* **100% Free:** Runs entirely on GitHub-hosted `ubuntu-latest` runners. No cloud accounts, AWS keys, or credit cards required.
+
+---
+
+## How It Works (The 3 Quality Gates)
+
+Every time a Pull Request is opened in a connected repository, GitHub Actions runs these checks in sequence:
+
+```
+[PR Opened] ──> [Gate 1: Secret Scan] ──> [Gate 2: Container Security] ──> [Gate 3: Load & SLA Gate] ──> [Merge Approved]
+                        │                               │                              │
+                     Leaked Key?                    Critical CVE?                 p97.5 > 300ms?
+                        ▼                               ▼                              ▼
+                   🛑 Block PR                     🛑 Block PR                    🛑 Block PR
+```
+
+1. **Gate 1: Secret Scanning ([Gitleaks](https://github.com/gitleaks/gitleaks-action))**  
+   Scans the entire Git commit history to ensure no API keys, private tokens, passwords, or certificates are accidentally committed.
+2. **Gate 2: Container Security ([Trivy](https://github.com/aquasecurity/trivy))**  
+   Builds the application's Docker image and scans operating system packages and dependencies. Blocks the build if any `CRITICAL` CVEs are found.
+3. **Gate 3: Load-Testing Performance Gate ([Autocannon](https://github.com/mcollina/autocannon))**  
+   Spins up an ephemeral container on the runner, waits for the `/health` endpoint, and benchmarks the API under load (default: 30 concurrent users for 10 seconds). Fails if any requests error out or if the **p97.5 tail latency exceeds the configured SLA** (default: 300ms). Cleans up the container automatically.
+
+---
+
+## Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Central ["Central Quality Gate Repo (e.g. your-user/devops-quality-gate)"]
+    subgraph Engine ["Central Engine (prateekrepo-space/devops-quality-gate)"]
         direction TB
         QG[".github/workflows/quality-gate.yml\n(on: workflow_call)"]
-        
-        subgraph Gates ["3 Automated Quality Gates (Cost: ₹0)"]
-            G1["Gate 1: Gitleaks\n(Blocks Hardcoded Secrets)"]
-            G2["Gate 2: Trivy\n(Blocks CRITICAL CVEs)"]
-            G3["Gate 3: Autocannon\n(Blocks p97.5 Latency > 300ms)"]
-        end
+        G1["Gate 1: Gitleaks\n(Secret Detection)"]
+        G2["Gate 2: Trivy\n(Container Vulnerability Audit)"]
+        G3["Gate 3: Autocannon\n(p97.5 Latency SLA Enforcement)"]
         
         QG --> G1 --> G2 --> G3
     end
 
-    subgraph Projects ["Any Containerized Project in Your GitHub Account"]
+    subgraph ConsumerRepos ["Any Application Repository"]
         direction LR
-        P1["MERN / Node.js API\n(.github/workflows/quality-gate.yml)\nport: 3000"]
-        P2["Go / Fiber Microservice\n(.github/workflows/quality-gate.yml)\nport: 8080"]
-        P3["Python / Django Backend\n(.github/workflows/quality-gate.yml)\nport: 8000"]
+        App1["Node.js / Express App\n(.github/workflows/quality-gate.yml)\nport: 3000"]
+        App2["Python / FastAPI App\n(.github/workflows/quality-gate.yml)\nport: 8000"]
+        App3["Go / Fiber Service\n(.github/workflows/quality-gate.yml)\nport: 8080"]
     end
 
-    P1 ==>|"uses: your-user/devops-quality-gate/...@main"| QG
-    P2 ==>|"uses: your-user/devops-quality-gate/...@main"| QG
-    P3 ==>|"uses: your-user/devops-quality-gate/...@main"| QG
+    App1 ==>|"uses: .../quality-gate.yml@v1"| QG
+    App2 ==>|"uses: .../quality-gate.yml@v1"| QG
+    App3 ==>|"uses: .../quality-gate.yml@v1"| QG
 
-    G3 --> Pass["✅ All Checks Green -> Safe to Merge!"]
-    G1 -.->|Leak Detected| Block["🛑 Block PR"]
-    G2 -.->|CVE Found| Block
-    G3 -.->|SLA Breached| Block
+    G3 --> Pass["✅ All Checks Pass -> PR Ready to Merge!"]
+    G1 -.->|Secret Leaked| Fail["🛑 PR Blocked"]
+    G2 -.->|Critical CVE| Fail
+    G3 -.->|SLA Breached| Fail
 
     classDef central fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff;
     classDef gate fill:#0f172a,stroke:#8b5cf6,stroke-width:1px,color:#fff;
@@ -60,55 +78,89 @@ flowchart TD
     classDef pass fill:#14532d,stroke:#22c55e,color:#fff,font-weight:bold;
     classDef fail fill:#7f1d1d,stroke:#ef4444,color:#fff,font-weight:bold;
 
-    class Central,QG central;
+    class Engine,QG central;
     class G1,G2,G3 gate;
-    class P1,P2,P3 project;
+    class ConsumerRepos,App1,App2,App3 project;
     class Pass pass;
-    class Block fail;
+    class Fail fail;
 ```
 
 ---
 
-## Why It Costs ₹0 Forever
+## How to Use This in Your Own Project
 
-- **No Cloud Accounts Needed:** Zero AWS, GCP, or Azure accounts or credit cards required.
-- **GitHub Runner Powered:** Executes entirely on GitHub’s free, ephemeral `ubuntu-latest` virtual machines.
-- **Public Reusable Workflows:** GitHub provides 100% free GitHub Actions minutes for public repositories.
+You can plug this quality gate into **any GitHub repository** that has a `Dockerfile` in 30 seconds.
 
----
-
-## How to Wire This Quality Gate to ANY Repo in 30 Seconds
-
-### Step 1: Make This Central Repo Public
-Ensure your copy of this repository on GitHub is set to **Public** so your other repositories can call the workflow.
-
-### Step 2: Add 10 Lines of YAML to Your Target Repo
-In **any** other application repository that has a `Dockerfile`, create `.github/workflows/quality-gate.yml`:
+### Step 1: Create the Workflow File
+In your repository, create `.github/workflows/quality-gate.yml`:
 
 ```yaml
-name: Run Quality Gate
+name: Quality Gate
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+on: [push, pull_request]
 
 jobs:
-  gate:
-    name: "Enforce Quality Gate"
-    # Uses your public quality gate:
-    uses: prateekrepo-space/devops-quality-gate/.github/workflows/quality-gate.yml@main
+  quality-gate:
+    name: "Enforce Security & Performance SLA"
+    uses: prateekrepo-space/devops-quality-gate/.github/workflows/quality-gate.yml@v1
     with:
-      port: "8000"              # Your app container port (e.g., 3000 for Node, 8080 for Go)
-      health_path: "/health"    # Route used to verify container readiness
-      load_test_path: "/items"  # Route to test under load (e.g., /api, /users)
+      port: "8000"              # Your container's listening port (e.g., 3000, 8000, 8080)
+      health_path: "/health"    # Health check route used for container readiness
+      load_test_path: "/items"  # API route to benchmark under load
       max_latency_ms: 300       # SLA limit: Fails PR if p97.5 latency > 300ms
-      connections: 30           # Number of concurrent users (default: 30)
-      duration: 10              # Benchmark duration in seconds (default: 10)
 ```
 
-That's it! Every future Pull Request in that repository now automatically runs Gitleaks, Trivy, and Autocannon before merging.
+### Step 2: Open a Pull Request
+Whenever code is pushed or a PR is opened, the 3 gates run automatically. If an API endpoint regresses or secrets are detected, the check fails with a red ❌ and blocks the merge.
+
+---
+
+## Configurable Options
+
+You can customize the gate parameters for your specific application requirements:
+
+| Input | Description | Type | Default | Example |
+| :--- | :--- | :---: | :---: | :---: |
+| `port` | Container listening port | `string` | `"8000"` | `"3000"`, `"8080"` |
+| `health_path` | Endpoint to verify container readiness | `string` | `"/health"` | `"/api/health"` |
+| `load_test_path` | Route to benchmark under traffic | `string` | `"/items"` | `"/api/users"` |
+| `max_latency_ms` | Maximum acceptable p97.5 latency in ms | `number` | `300` | `150` (strict) or `500` |
+| `connections` | Number of simultaneous concurrent users | `number` | `30` | `10`, `50`, `100` |
+| `duration` | Benchmark duration in seconds | `number` | `10` | `5` or `20` |
+
+---
+
+## Local Development & Testing
+
+This repository includes a production-grade Python 3.12 FastAPI microservice so you can test all quality gates locally.
+
+### 1. Run Unit Tests
+```bash
+pip install -r app/requirements.txt
+pytest -v tests/
+```
+
+### 2. Build & Run the Container
+The container runs as an unprivileged user (`appuser`, UID 10001) for defense-in-depth:
+```bash
+# Build image
+docker build -t demo-api:local .
+
+# Run container on port 8000
+docker run -d --name demo-api -p 8000:8000 demo-api:local
+
+# Check health endpoint
+curl http://localhost:8000/health
+
+# Clean up
+docker stop demo-api && docker rm demo-api
+```
+
+### 3. Run Autocannon Load Benchmark Locally
+```bash
+# Ensure container or local app is running on port 8000
+npx --yes autocannon -c 30 -d 10 http://localhost:8000/items
+```
 
 ---
 
@@ -118,117 +170,26 @@ That's it! Every future Pull Request in that repository now automatically runs G
 .
 ├── .github/
 │   └── workflows/
-│       ├── quality-gate.yml   # Central Reusable Workflow engine (on: workflow_call)
-│       └── ci-cd.yml          # Self-test workflow validating the included FastAPI demo
+│       ├── quality-gate.yml   # The reusable quality gate engine (on: workflow_call)
+│       └── ci-cd.yml          # Self-test pipeline for the included FastAPI app
 ├── app/
-│   ├── main.py                # FastAPI demo app with /health, /items & SIMULATE_DELAY_MS
-│   └── requirements.txt       # Dependencies (fastapi, uvicorn, httpx, pytest)
+│   ├── main.py                # FastAPI service with /health & /items endpoints
+│   └── requirements.txt       # Dependencies (fastapi, uvicorn, pydantic, pytest)
 ├── tests/
-│   └── test_app.py            # Unit test suite verifying health checks & latency logic
+│   └── test_app.py            # Unit tests covering endpoints and latency logic
 ├── examples/
-│   └── quality-gate.yml       # Ready-to-copy 10-line drop-in file for other repos
-├── Dockerfile                 # Small python:3.12-slim image running as non-root appuser
+│   └── quality-gate.yml       # Copy-paste starter template for other projects
+├── Dockerfile                 # Hardened python:3.12-slim image running as non-root user
 ├── .dockerignore              # Cache, test, and git exclusions
-├── .gitignore                 # Python, test, OS, and local file ignores
-└── README.md                  # Complete architectural & operational guide
+├── pytest.ini                 # Pytest root configuration
+├── .gitignore                 # Python, test, OS, and local credential ignores
+└── README.md                  # Project documentation
 ```
 
 ---
 
-## Local Development & Testing (Running It Right Now)
+## Why It Is 100% Free
 
-This repository includes a working FastAPI service so you can test all gates immediately.
-
-### 1. Run Unit Tests Locally
-```bash
-pip install -r app/requirements.txt
-pytest -v tests/
-```
-
-### 2. Build and Test the Docker Image Locally
-```bash
-# Build image
-docker build -t demo-api:local .
-
-# Run container on port 8000
-docker run -d --name demo-api-local -p 8000:8000 demo-api:local
-
-# Check health endpoint
-curl -i http://localhost:8000/health
-
-# Check items endpoint
-curl -i http://localhost:8000/items
-
-# Clean up
-docker stop demo-api-local && docker rm demo-api-local
-```
-
-### 3. Run Autocannon Load Benchmark Locally
-```bash
-# Ensure container is running on port 8000
-npx --yes autocannon -c 30 -d 10 http://localhost:8000/items
-```
-
----
-
-## Demonstrating the Quality Gate (PR Screenshots for Portfolio)
-
-### Scenario A: The Passing PR (Healthy Code)
-1. Open a branch: `git checkout -b feature/new-endpoint`
-2. Add a new item to `CATALOG_ITEMS` in `app/main.py`.
-3. Open a Pull Request.
-4. **Result:**
-   - **Gitleaks:** `No leaks detected`
-   - **Trivy:** `0 CRITICAL vulnerabilities`
-   - **Autocannon:**
-     ```plaintext
-     ==================================================
-     AUTOCANNON QUALITY GATE RESULTS
-     ==================================================
-     Total Requests:       112450
-     Average Throughput:   3.42 MB/s
-     Total Errors:         0 (Max allowed: 0)
-     Non-2xx Responses:    0 (Max allowed: 0)
-     p97.5 Latency:        4 ms (Max SLA allowed: 300 ms)
-     ==================================================
-      Quality Gate PASSED: App satisfies throughput & latency SLAs.
-     ```
-   - All status checks are **Green**.
-
----
-
-### Scenario B: The Blocked PR (Injected Latency Regression)
-1. Open a branch: `git checkout -b test/slow-code`
-2. In `app/main.py`, inject latency:
-   ```python
-   # Intentionally simulate slow un-indexed DB query or degraded API
-   delay_ms_str = os.getenv("SIMULATE_DELAY_MS", "450")
-   ```
-3. Open a Pull Request.
-4. **Result:**
-   - Functional unit tests still pass.
-   - Gitleaks and Trivy pass.
-   - **Autocannon Gate catches the slowdown and fails:**
-     ```plaintext
-     ==================================================
-     AUTOCANNON QUALITY GATE RESULTS
-     ==================================================
-     Total Requests:       652
-     Average Throughput:   0.02 MB/s
-     Total Errors:         0 (Max allowed: 0)
-     Non-2xx Responses:    0 (Max allowed: 0)
-     p97.5 Latency:        458 ms (Max SLA allowed: 300 ms)
-     ==================================================
-     GATE FAILED: p97.5 latency (458 ms) breached SLA threshold (300 ms).
-
-     🚨 Quality Gate REJECTED: Performance SLA breach.
-     Error: Process completed with exit code 1.
-     ```
-   - **Action:** Pull Request turns **Red** and prevents the merge! Capture this screenshot for your portfolio!
-
----
-
-## Quantified Resume Bullet Points
-
-- **Engineered a centralized, zero-cost (₹0) DevSecOps quality gate using GitHub Reusable Workflows (`workflow_call`), standardizing secret detection (Gitleaks) and container vulnerability scanning (Trivy) across multiple consumer repositories.**
-- **Designed an automated CI performance quality gate with Autocannon, benchmarking ephemeral containers to enforce strict p97.5 latency thresholds (<300ms at 30 concurrent users) and blocking 100% of performance regressions pre-merge.**
+* **No Cloud Infrastructure:** The gate does not provision any servers or cloud databases.
+* **Ephemeral GitHub Runners:** All checks execute on GitHub's free `ubuntu-latest` runner virtual machines.
+* **Public Reusable Workflows:** GitHub provides free Actions execution for public repositories, meaning neither you nor any developers using this workflow incur any costs.
