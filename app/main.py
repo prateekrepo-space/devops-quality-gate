@@ -1,7 +1,7 @@
 import asyncio
 import os
 from typing import Dict, List
-from fastapi import FastAPI, Response, status
+from fastapi import FastAPI, status
 
 app = FastAPI(
     title="CI Security & Load-Testing Quality Gate Demo API",

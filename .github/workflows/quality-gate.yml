@@ -151,15 +151,18 @@ jobs:
           docker build -t target-app:loadtest .
 
       - name: Start Ephemeral Application Container
+        env:
+          PORT: ${{ inputs.port || '8000' }}
         run: |
           docker run -d --name target-app-runtime \
-            -p ${{ inputs.port }}:${{ inputs.port }} \
+            -p "${PORT}:${PORT}" \
             target-app:loadtest
 
       - name: Wait for API Health Readiness Probe
+        env:
+          PORT: ${{ inputs.port || '8000' }}
+          HEALTH_PATH: ${{ inputs.health_path || '/health' }}
         run: |
-          PORT="${{ inputs.port || '8000' }}"
-          HEALTH_PATH="${{ inputs.health_path || '/health' }}"
           echo "Waiting for container readiness at http://localhost:${PORT}${HEALTH_PATH}..."
           for i in {1..30}; do
             if curl -s -f "http://localhost:${PORT}${HEALTH_PATH}" > /dev/null; then
@@ -174,11 +177,12 @@ jobs:
           exit 1
 
       - name: Run Autocannon Load Benchmark
+        env:
+          PORT: ${{ inputs.port || '8000' }}
+          LOAD_TEST_PATH: ${{ inputs.load_test_path || '/items' }}
+          CONNECTIONS: ${{ inputs.connections || '30' }}
+          DURATION: ${{ inputs.duration || '10' }}
         run: |
-          PORT="${{ inputs.port || '8000' }}"
-          LOAD_TEST_PATH="${{ inputs.load_test_path || '/items' }}"
-          CONNECTIONS="${{ inputs.connections || '30' }}"
-          DURATION="${{ inputs.duration || '10' }}"
           TARGET_URL="http://localhost:${PORT}${LOAD_TEST_PATH}"
 
           echo "Executing benchmark: ${CONNECTIONS} connections for ${DURATION}s against ${TARGET_URL}..."
