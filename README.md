@@ -1,6 +1,6 @@
 # DevOps Quality Gate
 
-> **An automated, zero-cost (₹0) DevSecOps quality gate for GitHub Actions. Blocks hardcoded secrets (Gitleaks), critical container vulnerabilities (Trivy), and latency regressions (Autocannon p97.5 SLA) before bad code can merge into production.**
+> **An automated, zero-cost DevSecOps quality gate for GitHub Actions. Blocks hardcoded secrets (Gitleaks), critical container vulnerabilities (Trivy), and latency regressions (Autocannon p97.5 SLA) before bad code can merge into production.**
 
 [![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Reusable%20Workflow-2088FF?logo=github-actions&logoColor=white)](#how-to-use-this-in-your-own-project)
 [![Gitleaks](https://img.shields.io/badge/Secrets-Gitleaks-blueviolet?logo=shield)](https://github.com/gitleaks/gitleaks-action)
@@ -185,11 +185,3 @@ npx --yes autocannon -c 30 -d 10 http://localhost:8000/items
 ├── .gitignore                 # Python, test, OS, and local credential ignores
 └── README.md                  # Project documentation
 ```
-
----
-
-## Why It Is 100% Free
-
-* **No Cloud Infrastructure:** The gate does not provision any servers or cloud databases.
-* **Ephemeral GitHub Runners:** All checks execute on GitHub's free `ubuntu-latest` runner virtual machines.
-* **Public Reusable Workflows:** GitHub provides free Actions execution for public repositories, meaning neither you nor any developers using this workflow incur any costs.
