@@ -10,8 +10,8 @@ on:
 jobs:
   quality-gate:
     name: "Enforce Security & Performance Gate (Cost: ₹0)"
-    # Replace <YOUR_GITHUB_USERNAME> with your GitHub username:
-    uses: <YOUR_GITHUB_USERNAME>/ci-security-load-quality-gate/.github/workflows/quality-gate.yml@main
+    # Calls your public reusable quality gate:
+    uses: prateekrepo-space/devops-quality-gate/.github/workflows/quality-gate.yml@main
     with:
       port: "8000"              # Your container port (e.g., 3000 for Node.js, 8000 for FastAPI, 8080 for Spring)
       health_path: "/health"    # Probe endpoint to confirm container readiness

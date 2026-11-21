@@ -97,8 +97,8 @@ on:
 jobs:
   gate:
     name: "Enforce Quality Gate"
-    # Replace <YOUR_GITHUB_USERNAME> with your actual GitHub username:
-    uses: <YOUR_GITHUB_USERNAME>/ci-security-load-quality-gate/.github/workflows/quality-gate.yml@main
+    # Uses your public quality gate:
+    uses: prateekrepo-space/devops-quality-gate/.github/workflows/quality-gate.yml@main
     with:
       port: "8000"              # Your app container port (e.g., 3000 for Node, 8080 for Go)
       health_path: "/health"    # Route used to verify container readiness

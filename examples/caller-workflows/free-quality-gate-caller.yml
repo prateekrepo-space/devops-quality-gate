@@ -11,7 +11,7 @@ jobs:
   # Calls the central reusable quality gate from your public repo
   quality-gate:
     name: "Enforce Security & Performance SLA"
-    uses: <YOUR_GITHUB_USERNAME>/ci-security-load-quality-gate/.github/workflows/quality-gate.yml@main
+    uses: prateekrepo-space/devops-quality-gate/.github/workflows/quality-gate.yml@main
     with:
       port: "3000"              # Your container application port (e.g., 3000 for Node.js, 8080 for Spring)
       health_path: "/health"    # Probe path to confirm container readiness
