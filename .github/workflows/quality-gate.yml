@@ -155,6 +155,7 @@ jobs:
           PORT: ${{ inputs.port || '8000' }}
         run: |
           docker run -d --name target-app-runtime \
+            -e PORT="${PORT}" \
             -p "${PORT}:${PORT}" \
             target-app:loadtest
 
@@ -231,6 +232,9 @@ jobs:
           print("="*50)
 
           failed = False
+          if total_requests == 0:
+              print("GATE FAILED: Zero requests were processed. The application was unreachable or crashed under load.")
+              failed = True
           if errors > 0:
               print(f"GATE FAILED: {errors} request/connection errors detected.")
               failed = True
