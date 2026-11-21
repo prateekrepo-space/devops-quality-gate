@@ -68,6 +68,16 @@ on:
         required: false
         type: number
         default: 300
+      connections:
+        description: "Number of concurrent Autocannon connections"
+        required: false
+        type: number
+        default: 30
+      duration:
+        description: "Duration of load test in seconds"
+        required: false
+        type: number
+        default: 10
 
 permissions:
   contents: read
@@ -148,9 +158,11 @@ jobs:
 
       - name: Wait for API Health Readiness Probe
         run: |
-          echo "Waiting for container readiness at http://localhost:${{ inputs.port }}${{ inputs.health_path }}..."
+          PORT="${{ inputs.port || '8000' }}"
+          HEALTH_PATH="${{ inputs.health_path || '/health' }}"
+          echo "Waiting for container readiness at http://localhost:${PORT}${HEALTH_PATH}..."
           for i in {1..30}; do
-            if curl -s -f http://localhost:${{ inputs.port }}${{ inputs.health_path }} > /dev/null; then
+            if curl -s -f "http://localhost:${PORT}${HEALTH_PATH}" > /dev/null; then
               echo "Container is healthy and ready for load benchmark!"
               exit 0
             fi
@@ -163,23 +175,41 @@ jobs:
 
       - name: Run Autocannon Load Benchmark
         run: |
-          echo "Executing benchmark: ${{ inputs.connections }} connections for ${{ inputs.duration }}s against http://localhost:${{ inputs.port }}${{ inputs.load_test_path }}..."
+          PORT="${{ inputs.port || '8000' }}"
+          LOAD_TEST_PATH="${{ inputs.load_test_path || '/items' }}"
+          CONNECTIONS="${{ inputs.connections || '30' }}"
+          DURATION="${{ inputs.duration || '10' }}"
+          TARGET_URL="http://localhost:${PORT}${LOAD_TEST_PATH}"
+
+          echo "Executing benchmark: ${CONNECTIONS} connections for ${DURATION}s against ${TARGET_URL}..."
           npx --yes autocannon --json \
-            -c ${{ inputs.connections }} \
-            -d ${{ inputs.duration }} \
-            http://localhost:${{ inputs.port }}${{ inputs.load_test_path }} > autocannon.json
+            -c "$CONNECTIONS" \
+            -d "$DURATION" \
+            "$TARGET_URL" > autocannon.json
+
           cat autocannon.json
 
       - name: Enforce Performance SLA Thresholds
+        env:
+          MAX_LATENCY_MS: ${{ inputs.max_latency_ms || '300' }}
         run: |
           python - << 'EOF'
           import json
           import sys
+          import os
+
+          if not os.path.exists("autocannon.json") or os.path.getsize("autocannon.json") == 0:
+              print("\n🚨 ERROR: autocannon.json is missing or empty. The benchmark process failed to produce metrics.\n")
+              sys.exit(1)
 
           with open("autocannon.json", "r") as f:
-              data = json.load(f)
+              try:
+                  data = json.load(f)
+              except json.JSONDecodeError as err:
+                  print(f"\n🚨 ERROR: Failed to parse benchmark JSON output: {err}\n")
+                  sys.exit(1)
 
-          max_latency = float("${{ inputs.max_latency_ms }}")
+          max_latency = float(os.getenv("MAX_LATENCY_MS", "300"))
           errors = data.get("errors", 0)
           non2xx = data.get("non2xx", 0)
           p97_5 = data.get("latency", {}).get("p97_5", 0)
