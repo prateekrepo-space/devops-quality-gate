@@ -1,16 +1,15 @@
-name: Universal Quality Gate Engine
+name: Free Universal Quality Gate
 
 # ==============================================================================
-# REUSABLE WORKFLOW (Platform Engineering Pattern)
+# 100% FREE UNIVERSAL QUALITY GATE (Platform Engineering Reusable Workflow)
 #
-# Can be called by ANY containerized repository across your GitHub account:
-#   uses: <YOUR_USERNAME>/<GATE_REPO>/.github/workflows/quality-gate.yml@main
+# Runs on GitHub-hosted runners (ubuntu-latest).
+# Costs ₹0 / $0 forever — NO AWS account, credit card, or cloud setup required.
 #
-# SDLC Quality Gates:
-#   1. Secret Scanning (Gitleaks - full commit history)
-#   2. Vulnerability Scanning (Trivy - blocks CRITICAL CVEs)
-#   3. Load-Testing Gate (Autocannon - blocks p97.5 latency regressions)
-#   4. AWS ECS Fargate Continuous Deployment (Optional - deploy_to_ecs: true)
+# Works with ANY containerized repository (Node.js, Python, Go, Java, Rust, etc.):
+#   1. Secret Scanning (Gitleaks - inspects git history for exposed credentials)
+#   2. Container Security (Trivy - blocks images with CRITICAL CVEs)
+#   3. Load-Testing SLA Gate (Autocannon - blocks builds if p97.5 latency > SLA)
 # ==============================================================================
 
 on:
@@ -27,7 +26,7 @@ on:
         type: string
         default: "/health"
       load_test_path:
-        description: "API endpoint path to benchmark under load (e.g. /items, /api)"
+        description: "API route to benchmark under load (e.g. /items, /api, /users)"
         required: false
         type: string
         default: "/items"
@@ -42,49 +41,10 @@ on:
         type: number
         default: 30
       duration:
-        description: "Duration of Autocannon benchmark in seconds"
+        description: "Duration of load test in seconds"
         required: false
         type: number
         default: 10
-      deploy_to_ecs:
-        description: "Whether to deploy to AWS ECS Fargate upon merge to main"
-        required: false
-        type: boolean
-        default: false
-      aws_region:
-        description: "AWS Region for ECR and ECS deployment"
-        required: false
-        type: string
-        default: "us-east-1"
-      ecr_repository:
-        description: "Amazon ECR Repository name"
-        required: false
-        type: string
-        default: "ci-security-gate-api"
-      ecs_cluster:
-        description: "Amazon ECS Cluster name"
-        required: false
-        type: string
-        default: "ci-security-gate-cluster"
-      ecs_service:
-        description: "Amazon ECS Service name"
-        required: false
-        type: string
-        default: "ci-security-gate-service"
-      container_name:
-        description: "Container name defined in ECS task definition"
-        required: false
-        type: string
-        default: "demo-api"
-      task_definition_path:
-        description: "Path to task-definition.json"
-        required: false
-        type: string
-        default: "task-definition.json"
-    secrets:
-      AWS_ROLE_ARN:
-        description: "IAM Role ARN for AWS OIDC authentication (only needed if deploy_to_ecs: true)"
-        required: false
 
   workflow_dispatch:
     inputs:
@@ -108,25 +68,19 @@ on:
         required: false
         type: number
         default: 300
-      deploy_to_ecs:
-        description: "Deploy to AWS ECS Fargate"
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
-  id-token: write  # Required for GitHub OIDC authentication to AWS
 
 jobs:
   # ============================================================================
-  # GATE 1: Shift-Left Secret Scanning (Gitleaks)
+  # GATE 1: Secret Scanning (Gitleaks)
   # ============================================================================
   secret-scan-gate:
     name: "Gate 1: Secret Scan (Gitleaks)"
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Caller Repository
+      - name: Checkout Code with Full Git History
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -137,14 +91,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ============================================================================
-  # GATE 2: Container Build & Vulnerability Security Gate (Trivy)
+  # GATE 2: Container Vulnerability Security Gate (Trivy)
   # ============================================================================
   vulnerability-scan-gate:
     name: "Gate 2: Container Security (Trivy)"
     needs: secret-scan-gate
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Caller Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Build Local Container Image
@@ -169,7 +123,7 @@ jobs:
     needs: vulnerability-scan-gate
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Caller Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up Node.js for Autocannon
@@ -194,7 +148,7 @@ jobs:
 
       - name: Wait for API Health Readiness Probe
         run: |
-          echo "Waiting for health probe at http://localhost:${{ inputs.port }}${{ inputs.health_path }}..."
+          echo "Waiting for container readiness at http://localhost:${{ inputs.port }}${{ inputs.health_path }}..."
           for i in {1..30}; do
             if curl -s -f http://localhost:${{ inputs.port }}${{ inputs.health_path }} > /dev/null; then
               echo "Container is healthy and ready for load benchmark!"
@@ -209,7 +163,7 @@ jobs:
 
       - name: Run Autocannon Load Benchmark
         run: |
-          echo "Running load test: ${{ inputs.connections }} connections, ${{ inputs.duration }}s against http://localhost:${{ inputs.port }}${{ inputs.load_test_path }}..."
+          echo "Executing benchmark: ${{ inputs.connections }} connections for ${{ inputs.duration }}s against http://localhost:${{ inputs.port }}${{ inputs.load_test_path }}..."
           npx --yes autocannon --json \
             -c ${{ inputs.connections }} \
             -d ${{ inputs.duration }} \
@@ -266,56 +220,3 @@ jobs:
           echo "Cleaning up ephemeral performance container..."
           docker stop target-app-runtime || true
           docker rm target-app-runtime || true
-
-  # ============================================================================
-  # GATE 4: Optional Continuous Deployment to AWS ECS Fargate (main branch only)
-  # ============================================================================
-  deploy-to-ecs:
-    name: "Gate 4: CD to AWS ECS Fargate"
-    needs: load-test-quality-gate
-    if: inputs.deploy_to_ecs == true && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Caller Repository
-        uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials via GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ inputs.aws_region }}
-          audience: sts.amazonaws.com
-
-      - name: Log in to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build, Tag, and Push Docker Image to ECR
-        id: build-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          IMAGE_URI="$ECR_REGISTRY/${{ inputs.ecr_repository }}:$IMAGE_TAG"
-          IMAGE_LATEST="$ECR_REGISTRY/${{ inputs.ecr_repository }}:latest"
-          echo "Building image $IMAGE_URI..."
-          docker build -t "$IMAGE_URI" -t "$IMAGE_LATEST" .
-          docker push "$IMAGE_URI"
-          docker push "$IMAGE_LATEST"
-          echo "image=$IMAGE_URI" >> "$GITHUB_OUTPUT"
-
-      - name: Render Amazon ECS Task Definition
-        id: render-task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: ${{ inputs.task_definition_path }}
-          container-name: ${{ inputs.container_name }}
-          image: ${{ steps.build-image.outputs.image }}
-
-      - name: Deploy Amazon ECS Task Definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
-          service: ${{ inputs.ecs_service }}
-          cluster: ${{ inputs.ecs_cluster }}
-          wait-for-service-stability: true

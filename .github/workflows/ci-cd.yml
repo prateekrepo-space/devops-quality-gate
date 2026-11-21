@@ -8,14 +8,13 @@ on:
 
 permissions:
   contents: read
-  id-token: write  # Required for GitHub OIDC authentication to AWS
 
 jobs:
   # ============================================================================
   # STAGE 1: Code Quality & Unit Testing
   # ============================================================================
   unit-tests:
-    name: "Stage 1: Code & Unit Tests"
+    name: "Stage 1: Unit Tests (Python/FastAPI)"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Code
@@ -37,10 +36,10 @@ jobs:
           pytest -v tests/
 
   # ============================================================================
-  # STAGES 2-5: Universal Quality Gate Engine (Local Reusable Call)
+  # STAGES 2-4: Free Quality Gate Engine
   # ============================================================================
   quality-gate:
-    name: "Stages 2-5: Reusable Quality Gate Engine"
+    name: "Stages 2-4: Free Quality Gate Engine"
     needs: unit-tests
     uses: ./.github/workflows/quality-gate.yml
     with:
@@ -50,11 +49,3 @@ jobs:
       max_latency_ms: 300
       connections: 30
       duration: 10
-      deploy_to_ecs: true
-      aws_region: "us-east-1"
-      ecr_repository: "ci-security-gate-api"
-      ecs_cluster: "ci-security-gate-cluster"
-      ecs_service: "ci-security-gate-service"
-      container_name: "demo-api"
-      task_definition_path: "task-definition.json"
-    secrets: inherit

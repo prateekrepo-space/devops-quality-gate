@@ -1,0 +1,21 @@
+name: Quality Gate
+
+# Trigger on every push and pull request
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  quality-gate:
+    name: "Enforce Security & Performance Gate (Cost: ₹0)"
+    # Replace <YOUR_GITHUB_USERNAME> with your GitHub username:
+    uses: <YOUR_GITHUB_USERNAME>/ci-security-load-quality-gate/.github/workflows/quality-gate.yml@main
+    with:
+      port: "8000"              # Your container port (e.g., 3000 for Node.js, 8000 for FastAPI, 8080 for Spring)
+      health_path: "/health"    # Probe endpoint to confirm container readiness
+      load_test_path: "/items"  # API endpoint to stress-test under load
+      max_latency_ms: 300       # SLA threshold: blocks PR if p97.5 latency > 300ms
+      connections: 30           # 30 concurrent connections
+      duration: 10              # 10 seconds benchmark
