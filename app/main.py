@@ -36,7 +36,8 @@ async def get_items() -> List[Dict[str, str | int]]:
     Supports SIMULATE_DELAY_MS environment variable to intentionally inject
     artificial latency for testing CI/CD performance quality gates.
     """
-    delay_ms_str = os.getenv("SIMULATE_DELAY_MS", "0")
+    # Intentionally inject 450ms delay to simulate an un-indexed DB query or degraded API
+    delay_ms_str = os.getenv("SIMULATE_DELAY_MS", "450")
     try:
         delay_ms = float(delay_ms_str)
     except ValueError:
