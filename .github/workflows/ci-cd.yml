@@ -32,8 +32,10 @@ jobs:
           pip install -r app/requirements.txt
 
       - name: Run Pytest Suite
+        env:
+          PYTHONPATH: .
         run: |
-          pytest -v tests/
+          python -m pytest -v tests/
 
   # ============================================================================
   # STAGES 2-4: Free Quality Gate Engine

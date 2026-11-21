@@ -106,7 +106,7 @@ jobs:
           docker build -t target-app:${{ github.sha }} .
 
       - name: Run Trivy Vulnerability Scan (Fail on CRITICAL CVEs)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: "target-app:${{ github.sha }}"
           format: "table"
